@@ -1,12 +1,15 @@
 #include "ros/ros.h"
 #include "mtrand.h"
+#include "helper.h"
 #include <string>
 #include <vector>
 
 #include "nav_msgs/OccupancyGrid.h"
 #include "std_msgs/String.h"
+#include "geometry_msgs/Point.h"
 #include "geometry_msgs/PointStamped.h"
 #include "visualization_msgs/Marker.h"
+#include <tf/transform_listener.h>
 
 // global vars
 float startx, starty;
@@ -21,7 +24,7 @@ void mapCallBack(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
 	mapData =* msg;
 }
 
-void rvizCallBack(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
+void rvizCallBack(const geometry_msgs::PointStamped::ConstPtr& msg) {
 	geometry_msgs::Point pnt;
 	pnt.x = msg->point.x;
 	pnt.y = msg->point.y;
@@ -33,9 +36,9 @@ void rvizCallBack(const nav_msgs::OccupancyGrid::ConstPtr& msg) {
 int main(int argc, char **argv) {
 	// get a rand nos from mtrand
 	MTRand_int32 irand();
-	MTRand drand();
+	MTRand drand;
 
-	ros:init(argc, argv, "local_rrt");
+	ros::init(argc, argv, "local_rrt");
 	ros::NodeHandle n;
 
 	float init_x, init_y, range, eta;
@@ -45,17 +48,17 @@ int main(int argc, char **argv) {
 	ns = ros::this_node::getName();
 	ros::param::param<float>(ns+"/eta", eta, 0.5);
 	ros::param::param<std::string>(ns+"/map_topic", map_topic, "/tb1/map"); 
-	ros::param::param<std::string>(ns+"/robot_frame", base_frame_topic, "/tb1/base_link"); 
+	ros::param::param<std::string>(ns+"/robot_frame", frame_topic, "/tb1/base_link"); 
 
 	ros::Subscriber map_sub = n.subscribe(map_topic, 50, mapCallBack);
 	ros::Subscriber rviz_sub = n.subscribe("/clicked_point", 10, rvizCallBack);
 
 	ros::Publisher detect_pub = n.advertise<geometry_msgs::PointStamped>("/detected_points", 10);
-	ros::Publisher viz_pub = n.advertise<visulization_msgs::Marker>(ns+"/shapes", 10);
+	ros::Publisher viz_pub = n.advertise<visualization_msgs::Marker>(ns+"/shapes", 10);
 
 	ros::Rate rate(100);
 
-	while(mapData.data.size() < 1 or map.header.frame_id < 1) {
+	while(mapData.data.size() < 1 or mapData.header.seq < 1) {
 		ros::spinOnce();
 		rate.sleep();
 	}
@@ -66,13 +69,13 @@ int main(int argc, char **argv) {
 	points.header.stamp = ros::Time::now();
 	lines.header.stamp = ros::Time::now();
 
-	line.ns = points.ns = "local_rrt";
+	lines.ns = points.ns = "local_rrt";
 	points.id = 0;
 	lines.id = 1;
 
 	points.action = points.ADD;
 	lines.action = lines.ADD;
-	points.pose.orientation.w = lines.pose.orientation = 1.0;
+	points.pose.orientation.w = lines.pose.orientation.w = 1.0;
 	lines.scale.x = lines.scale.y = 0.025;
 	points.scale.x = points.scale.y = 0.25; 
 
@@ -86,9 +89,11 @@ int main(int argc, char **argv) {
 	lines.color.a = 1.0;
 	points.lifetime = lines.lifetime = ros::Duration();
 
+	geometry_msgs::Point pnt;
+
 	while(points.points.size() < 5) {
 		ros::spinOnce();
-		pub.publish(points);
+		viz_pub.publish(points);
 	}
 
 	// Bounding Box and starting point
@@ -125,7 +130,7 @@ int main(int argc, char **argv) {
 	std::vector<std::vector<float>> tree;
 	tree.push_back(start_vec);
 	points.points.clear();
-	pub.publish(points);
+	viz_pub.publish(points);
 
 	//Frontier Detection
 	std::vector<float> frontiers;
@@ -161,7 +166,7 @@ int main(int argc, char **argv) {
 			pnt.z = 0.0;
 
 			points.points.push_back(pnt);
-			pub.publish(points);
+			viz_pub.publish(points);
 
 			detect_pub.publish(goal);
 			points.points.clear();
@@ -198,7 +203,7 @@ int main(int argc, char **argv) {
 			lines.points.push_back(pnt);
 		}
 
-		pub.publish(lines);
+		viz_pub.publish(lines);
 
 		ros::spinOnce();
 		rate.sleep();
