@@ -12,6 +12,9 @@
 //Norm function prototype
 float Norm( std::vector<float> , std::vector<float> );
 
+//sign function prototype
+float sign(float );
+
 //Nearest function prototype
 std::vector<float> Nearest(  std::vector< std::vector<float>  > , std::vector<float> );
 
