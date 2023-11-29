@@ -5,7 +5,8 @@ import tf
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker
-from numpy import array, vstack
+from geometry_msgs.msg import PointStamped
+from numpy import array, vstack, delete
 from copy import copy
 from sklearn.cluster import MeanShift
 from rrt_explorer.msg import PointArray
@@ -25,12 +26,11 @@ def callBack(data, args):
         frontier = x
 
 def mapCallBack(data):
-    global globalmap
-    globalmap = data
+    global mapData
+    mapData = data
 
 def globalMapCallBack(data):
-    global map1, globalmap, n_robots, namespace_init_count, litraIndx
-    map1 = data
+    global globalmap, n_robots, namespace_init_count, litraIndx
     if n_robots > 1:
         indx = int(data._connection_header['topic'][litraIndx])-namespace_init_count
     elif n_robots == 1:
@@ -38,7 +38,7 @@ def globalMapCallBack(data):
     globalmap[indx] = data
 
 def node():
-    global frontier, mapData, map1, globalmap, n_robots, namespace_init_count, litraIndx
+    global frontier, mapData, globalmap, n_robots, namespace_init_count, litraIndx
     rospy.init_node('filter', anonymous=False)
 
     map_topic = rospy.get_param('~map_topic', '/map')
@@ -168,10 +168,10 @@ def node():
                 transPoint = tfListener.transformPoint(globalmap[i].header.frame_id, tempPoint)
                 x = array([transPoint.point.x, transPoint.point.y])
                 check = (gridValue(globalmap[i], x) > threshold) or check
-                if(check or (informationGain(mapData, [centroids[z][0], centroids[z][1]], info_radius*0.5) < 0.2)):
-                    centroids = delete(centroids, z, 0)
-                    z -= 1
-                z+=1
+            if(check or (informationGain(mapData, [centroids[z][0], centroids[z][1]], info_radius*0.5) < 0.2)):
+                centroids = delete(centroids, z, 0)
+                z -= 1
+            z+=1
 
         # Publish filtered frontiers
         arrayPoints.points = []
