@@ -183,6 +183,7 @@ def node():
             tempPoint.point.y = centroids[z][1]
 
             for i in range(n_robots):
+                
                 transPoint = tfListener.transformPoint(globalmap[i].header.frame_id, tempPoint)
                 x = array([transPoint.point.x, transPoint.point.y])
                 check = (gridValue(globalmap[i], x) > threshold) or check
