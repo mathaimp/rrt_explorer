@@ -4,13 +4,36 @@ from nav_msgs.msg import OccupancyGrid
 # from rrt_explorer.msg import PointArray
 from helper import robot,informationGain
 import math as m
-from nav_msgs.msg import Odometry
 import actionlib
-from move_base_msgs.msg import MoveBaseActionGoal
+from nav_msgs.msg import Odometry
+from actionlib_msgs.msg import GoalStatusArray
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 map = ()
 frontiers = []
 size = 0
 current_pos = ()
+goal_status = GoalStatusArray()
+
+def movebase_client(frontier):
+
+    client = actionlib.SimpleActionClient('move_base',MoveBaseAction)
+    client.wait_for_server()
+
+    goal = MoveBaseGoal()
+    goal.target_pose.header.frame_id = "map"
+    goal.target_pose.header.stamp = rospy.Time.now()
+    goal.target_pose.pose.position.x = frontier[0]
+    goal.target_pose.pose.position.y = frontier[1]
+    goal.target_pose.pose.orientation.w = 1.0
+
+    client.send_goal(goal)
+    rospy.logerr("Sent Goal")
+    wait = client.wait_for_result()
+    if not wait:
+        rospy.logerr("Action server not available!")
+        rospy.signal_shutdown("Action server not available!")
+    else:
+        return client.get_result()
 
 def nav_cost(occupancy_grid, current_pos, frontier_point):
     return np.linalg.norm(np.asarray(current_pos) - np.asarray(frontier_point))
@@ -42,8 +65,12 @@ def odomCallback(msg):
     global current_pos
     current_pos = (msg.pose.pose.position.x, msg.pose.pose.position.y)
 
+def goalCallback(msg):
+    global goal_status
+    goal_status = msg
+
 def goal():
-    global map, frontiers, current_pos
+    global map, frontiers, current_pos, goal_status
 
     sensor_radius = 0.1
     alpha = 1
@@ -60,10 +87,12 @@ def goal():
 
     rospy.Subscriber('odom', Odometry, odomCallback)
 
-    pub = rospy.Publisher('/move_base/goal', MoveBaseActionGoal)
+    rospy.Subscriber('move_base/status', GoalStatusArray, goalCallback)
 
 
     while not rospy.is_shutdown():
+
+        goal_id = 0
 
         #Get the Occupancy Grid and pre-proccess
         size = int(m.sqrt(len(map)))
@@ -81,16 +110,7 @@ def goal():
                 least_revenue = revenue
                 optimal_frontier = frontier
 
-
-        frontier = (100, 100)
-        goal = MoveBaseActionGoal()
-        goal.goal.target_pose.header.frame_id = 'map'
-        goal.goal.target_pose.header.stamp = rospy.Time.now() 
-        goal.goal.target_pose.pose.position.x = frontier[0]
-        goal.goal.target_pose.pose.position.y = frontier[1]
-        pub.publish(goal)
-        rospy.loginfo("Published goal")
-
+        movebase_client(optimal_frontier)
 
 
 if __name__ == '__main__':
