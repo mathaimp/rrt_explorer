@@ -10,24 +10,7 @@ from numpy import array, vstack, delete, floor
 from copy import copy
 from sklearn.cluster import MeanShift
 from rrt_explorer.msg import PointArray
-
-#Grid value function
-def gridValue(mapData, Xp):
-    resolution = mapData.info.resolution
-    Xstartx = mapData.info.origin.position.x
-    Xstarty = mapData.info.origin.position.y
-
-    width = mapData.info.width
-    Data = mapData.data
-    # returns grid value at "Xp" location
-    # map data:  100 occupied      -1 unknown       0 free
-    index = (floor((Xp[1]-Xstarty)/resolution)*width) + \
-        (floor((Xp[0]-Xstartx)/resolution))
-
-    if int(index) < len(Data):
-        return Data[int(index)]
-    else:
-        return 100
+from helper import gridValue, informationGain
 
 # Callback functions.
 mapData = OccupancyGrid()
