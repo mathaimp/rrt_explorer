@@ -6,12 +6,30 @@ from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Point
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import PointStamped
-from numpy import array, vstack, delete
+from numpy import array, vstack, delete, floor
 from copy import copy
 from sklearn.cluster import MeanShift
 from rrt_explorer.msg import PointArray
 
-# Callback function for the subscriber.
+#Grid value function
+def gridValue(mapData, Xp):
+    resolution = mapData.info.resolution
+    Xstartx = mapData.info.origin.position.x
+    Xstarty = mapData.info.origin.position.y
+
+    width = mapData.info.width
+    Data = mapData.data
+    # returns grid value at "Xp" location
+    # map data:  100 occupied      -1 unknown       0 free
+    index = (floor((Xp[1]-Xstarty)/resolution)*width) + \
+        (floor((Xp[0]-Xstartx)/resolution))
+
+    if int(index) < len(Data):
+        return Data[int(index)]
+    else:
+        return 100
+
+# Callback functions.
 mapData = OccupancyGrid()
 frontier = []
 globalmap = []
@@ -43,7 +61,7 @@ def node():
 
     map_topic = rospy.get_param('~map_topic', '/map')
     threshold = rospy.get_param('~costmap_clearing_threshold', 70)
-    info_radius = rospy.get_param('~info_radius', 1.0)
+    sensor_radius = rospy.get_param('~sensor_radius', 0.1)
     goals_topic = rospy.get_param('~goals_topic', '/detected_points')
     n_robots = rospy.get_param('~n_robots', 1)
     namespace = rospy.get_param('~namespace', '')
@@ -168,7 +186,7 @@ def node():
                 transPoint = tfListener.transformPoint(globalmap[i].header.frame_id, tempPoint)
                 x = array([transPoint.point.x, transPoint.point.y])
                 check = (gridValue(globalmap[i], x) > threshold) or check
-            if(check or (informationGain(mapData, [centroids[z][0], centroids[z][1]], info_radius*0.5) < 0.2)):
+            if(check or (informationGain(mapData, [centroids[z][0], centroids[z][1]], sensor_radius) < 0.2)):
                 centroids = delete(centroids, z, 0)
                 z -= 1
             z+=1
