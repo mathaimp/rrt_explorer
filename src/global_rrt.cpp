@@ -47,14 +47,14 @@ int main(int argc, char **argv) {
 	std::string ns;
 	ns = ros::this_node::getName();
 	ros::param::param<float>(ns+"/eta", eta, 0.5);
-	ros::param::param<std::string>(ns+"/map_topic", map_topic, "/tb1/map"); 
-	ros::param::param<std::string>(ns+"/robot_frame", frame_topic, "/tb1/base_link"); 
+	ros::param::param<std::string>(ns+"/map_topic", map_topic, "/map"); 
+	ros::param::param<std::string>(ns+"/robot_frame", frame_topic, "/base_link"); 
 
 	ros::Subscriber map_sub = n.subscribe(map_topic, 50, mapCallBack);
 	ros::Subscriber rviz_sub = n.subscribe("/clicked_point", 10, rvizCallBack);
 
 	ros::Publisher detect_pub = n.advertise<geometry_msgs::PointStamped>("/detected_points", 10);
-	ros::Publisher viz_pub = n.advertise<visualization_msgs::Marker>(ns+"/shapes", 10);
+	ros::Publisher viz_pub = n.advertise<visualization_msgs::Marker>(ns+"_shapes", 10);
 
 	ros::Rate rate(100);
 
@@ -72,6 +72,9 @@ int main(int argc, char **argv) {
 	lines.ns = points.ns = "global_rrt";
 	points.id = 0;
 	lines.id = 1;
+
+	points.type = points.POINTS;
+	lines.type = lines.LINE_LIST;
 
 	points.action = points.ADD;
 	lines.action = lines.ADD;
