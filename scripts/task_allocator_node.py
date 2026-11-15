@@ -1,14 +1,19 @@
+#!/usr/bin/env python3
 import rospy
 import numpy as np
 from nav_msgs.msg import OccupancyGrid
-# from rrt_explorer.msg import PointArray
+from rrt_explorer.msg import PointArray
 from helper import robot,informationGain
 import math as m
 import actionlib
 from nav_msgs.msg import Odometry
-from actionlib_msgs.msg import GoalStatusArray
+from actionlib_msgs.msg import GoalStatusArray, GoalStatus
 from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
+GOAL_TIMEOUT = 30.0
+BLACKLIST_RADIUS = 0.5
+failed_goals = []
 map = ()
+map_msg = None
 frontiers = []
 size = 0
 current_pos = ()
@@ -27,13 +32,13 @@ def movebase_client(frontier):
     goal.target_pose.pose.orientation.w = 1.0
 
     client.send_goal(goal)
-    rospy.logerr("Sent Goal")
-    wait = client.wait_for_result()
-    if not wait:
-        rospy.logerr("Action server not available!")
-        rospy.signal_shutdown("Action server not available!")
-    else:
-        return client.get_result()
+    rospy.logerr("Sent Goal (%.2f, %.2f)" % (frontier[0], frontier[1]))
+    finished = client.wait_for_result(rospy.Duration(GOAL_TIMEOUT))
+    if not finished:
+        client.cancel_goal()
+        rospy.logwarn("Goal timed out after %.0fs, cancelled" % GOAL_TIMEOUT)
+        return False
+    return client.get_state() == GoalStatus.SUCCEEDED
 
 def nav_cost(occupancy_grid, current_pos, frontier_point):
     return np.linalg.norm(np.asarray(current_pos) - np.asarray(frontier_point))
@@ -54,12 +59,13 @@ def nav_cost(occupancy_grid, current_pos, frontier_point):
 #     return ig
 
 def mapCallback(msg):
-    global map
+    global map, map_msg
     map = msg.data
+    map_msg = msg
 
 def frontiersCallback(msg):
     global frontiers
-    frontiers = np.asarray(msg.data)
+    frontiers = [(p.x, p.y) for p in msg.points]
 
 def odomCallback(msg):
     global current_pos
@@ -83,7 +89,7 @@ def goal():
         rospy.loginfo("Waititng for map data")
         rospy.sleep(0.1)
 
-    #rospy.Subscriber('frontier', PointArray, frontiersCallback)
+    rospy.Subscriber('filtered_points', PointArray, frontiersCallback)
 
     rospy.Subscriber('odom', Odometry, odomCallback)
 
@@ -94,6 +100,10 @@ def goal():
 
         goal_id = 0
 
+        if len(frontiers) == 0 or len(current_pos) == 0:
+            rospy.sleep(0.5)
+            continue
+
         #Get the Occupancy Grid and pre-proccess
         size = int(m.sqrt(len(map)))
         grid = np.resize(np.asarray(map), (size, size))
@@ -101,16 +111,23 @@ def goal():
         optimal_frontier = ()
         least_revenue = m.inf
         for frontier in frontiers:
-            nav_cost = nav_cost(grid, current_pos, frontier)
-            ig = informationGain(grid, frontier, sensor_radius)
+            if any(m.dist(frontier, f) < BLACKLIST_RADIUS for f in failed_goals):
+                continue
+            cost = nav_cost(grid, current_pos, frontier)
+            ig = informationGain(map_msg, frontier, sensor_radius)
 
-            revenue = alpha*nav_cost + beta*ig
+            revenue = alpha*cost + beta*ig
 
             if revenue < least_revenue:
                 least_revenue = revenue
                 optimal_frontier = frontier
 
-        movebase_client(optimal_frontier)
+        if len(optimal_frontier) == 0:
+            rospy.sleep(0.5)
+            continue
+
+        if not movebase_client(optimal_frontier):
+            failed_goals.append(tuple(optimal_frontier))
 
 
 if __name__ == '__main__':
